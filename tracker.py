@@ -88,6 +88,8 @@ def process_season_pack(entry: TorrentEntry, parsed: ParsedRelease) -> dict | No
 
     # Delete older season packs for this show
     older_packs = db.get_older_season_packs(matched_show.show_name, parsed.season, entry.torrent_id)
+    older_pack_ids = [p.get("torrent_id") for p in older_packs if p.get("torrent_id")]
+    older_notifications = db.get_notifications_for_torrent_ids(older_pack_ids)
     deleted_count = db.delete_older_season_packs(matched_show.show_name, parsed.season, entry.torrent_id)
     
     if deleted_count > 0:
@@ -99,6 +101,7 @@ def process_season_pack(entry: TorrentEntry, parsed: ParsedRelease) -> dict | No
         "prev_latest_s": matched_show.latest_season,
         "had_previous": len(older_packs) > 0,
         "deleted_count": deleted_count,
+        "deleted_notifications": older_notifications,
     }
 
 

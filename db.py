@@ -455,6 +455,42 @@ def get_notification_for_release(parsed_name: str, group: str, resolution: str, 
     return results
 
 
+def get_notifications_for_torrent_ids(torrent_ids: list[int]) -> list[dict]:
+    if not torrent_ids:
+        return []
+
+    seen_ids = set()
+    unique_ids = []
+    for tid in torrent_ids:
+        if not tid:
+            continue
+        tid = int(tid)
+        if tid in seen_ids:
+            continue
+        seen_ids.add(tid)
+        unique_ids.append(tid)
+
+    if not unique_ids:
+        return []
+
+    placeholders = ",".join("?" for _ in unique_ids)
+
+    conn = _connect(DB_HISTORY)
+    rows = conn.execute(
+        f"""
+        SELECT torrent_id, chat_id, message_id, sent_at
+        FROM notifications
+        WHERE torrent_id IN ({placeholders})
+          AND message_id IS NOT NULL
+          AND message_id != 0
+        ORDER BY sent_at DESC
+        """,
+        unique_ids,
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def update_torrent_tmdb(torrent_id: int, tmdb_id: int, imdb_id: str, poster: str):
     conn = _connect(DB_MAIN)
     conn.execute(
