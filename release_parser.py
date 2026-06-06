@@ -128,6 +128,14 @@ AR_PREFIX_PATTERN = re.compile(r'^(?:TvHD|TvSD|TvUHD|MovieHD|MovieSD|Movie4K|Gam
 FL_TAG_PATTERN = re.compile(r'\s*\[(FreeLeech|Internal)\]', re.IGNORECASE)
 ERAI_PREFIX_PATTERN = re.compile(r'^\[(?:Torrent|Erai-raws)\]\s*', re.IGNORECASE)
 ERAI_STATE_PATTERN = re.compile(r'\[(Airing|Encoded)\]\s*$', re.IGNORECASE)
+LEADING_LANGUAGE_TAG_PATTERN = re.compile(
+    r'^\[(?:English|Turkish|Japanese|Korean|Chinese|Hindi|Arabic|Spanish|French|German|Italian|Portuguese|Russian|Multi)\]\s*',
+    re.IGNORECASE,
+)
+ANIME_TRAILING_EP_PATTERN = re.compile(
+    r'^(?P<name>.+?)(?:\s+\((?P<year>\d{4})\))?\s+(?P<episode>\d{1,4})(?:\s*\((?P<tech>[^)]*)\))?$',
+    re.IGNORECASE,
+)
 
 ERAI_MAIN_PATTERN = re.compile(
     r'^(?P<name>.+?)'
@@ -331,6 +339,11 @@ def parse(title: str, category: str = "") -> ParsedRelease:
 
     title_clean = AR_PREFIX_PATTERN.sub('', title_clean).strip()
     title_clean = FL_TAG_PATTERN.sub('', title_clean).strip()
+    for _ in range(8):
+        stripped = LEADING_LANGUAGE_TAG_PATTERN.sub('', title_clean).strip()
+        if stripped == title_clean:
+            break
+        title_clean = stripped
     title_clean = re.sub(r'\[(?:English|Japanese|Multi)\s*(?:Dub|Sub|Audio|Dubbed|Subbed)?\]', '', title_clean, flags=re.IGNORECASE).strip()
     title_clean = re.sub(r'\[(?:Dual\s*Audio|Multi\s*Audio|Multi\s*Sub)\]', '', title_clean, flags=re.IGNORECASE).strip()
     title_clean = re.sub(r'\((?:AMZN|NF|CR|HIDIVE|FUNI|BILI|DSNP|ATVP|HMAX|PCOK|PMTP)\)', '', title_clean, flags=re.IGNORECASE).strip()
@@ -608,10 +621,27 @@ def _try_anime(title: str) -> Optional[ParsedRelease]:
     p.group = m.group(1)
     p.clean_name = m.group(2).strip().rstrip("-").strip()
     ep_str = m.group(3)
+    if not ep_str:
+        trailing_ep = ANIME_TRAILING_EP_PATTERN.search(p.clean_name)
+        if trailing_ep:
+            p.clean_name = trailing_ep.group("name").strip()
+            year_str = trailing_ep.group("year")
+            if year_str:
+                p.year = int(year_str)
+            ep_str = trailing_ep.group("episode")
+            tech = trailing_ep.group("tech") or ""
+            if not p.resolution:
+                p.resolution = _find_match(tech, RESOLUTIONS)
     if ep_str:
         p.episode = int(ep_str)
         p.content_type = ContentType.ANIME_EP
     else:
+        if (
+            SEASON_EP_PATTERN.search(title)
+            or re.search(r'\bS\d{1,3}\s*-\s*\d{1,3}\b', title, re.IGNORECASE)
+            or re.search(r'\b(?:WEB[-.\s]?DL|WEBRip|x26[45]|H[ .]?26[45])\b', title, re.IGNORECASE)
+        ):
+            return None
         p.content_type = ContentType.ANIME_BATCH
     if m.group(4):
         p.resolution = m.group(4)

@@ -381,6 +381,7 @@ def send_aggregated_alerts(pending_alerts):
 
     had_tier1 = False
     sent_count = 0
+    deleted_messages = set()
 
     for fkey, family_data in families.items():
         if fkey in suppress_keys:
@@ -390,15 +391,28 @@ def send_aggregated_alerts(pending_alerts):
         ep_info = family_data["ep_info"]
         pack_info = family_data.get("pack_info")
 
+        if pack_info and pack_info.get("deleted_notifications"):
+            for notif in pack_info["deleted_notifications"]:
+                chat_id = str(notif.get("chat_id", "")).strip()
+                msg_id = int(notif.get("message_id", 0))
+                if chat_id and msg_id:
+                    msg_key = (chat_id, msg_id)
+                    if msg_key in deleted_messages:
+                        continue
+                    notifier.delete_message(chat_id, msg_id)
+                    deleted_messages.add(msg_key)
+
         if family_data["had_tier1"]:
            had_tier1 = True
 
         old_notifs = matcher._get_family_notifications(fkey)
         for notif in old_notifs:
-           chat_id = notif.get("chat_id", "")
+           chat_id = str(notif.get("chat_id", "")).strip()
            msg_id = notif.get("message_id", 0)
-           if chat_id and msg_id:
+           msg_key = (chat_id, msg_id)
+           if chat_id and msg_id and msg_key not in deleted_messages:
                notifier.delete_message(chat_id, msg_id)
+               deleted_messages.add(msg_key)
 
         p = result.entry.parsed
         if p and p.season is not None and p.episode is not None:
@@ -408,10 +422,12 @@ def send_aggregated_alerts(pending_alerts):
            if suppressed_fkey.startswith(fkey.rsplit("|", 1)[0]):
                old_suppressed = matcher._get_family_notifications(suppressed_fkey)
                for notif in old_suppressed:
-                   chat_id = notif.get("chat_id", "")
+                   chat_id = str(notif.get("chat_id", "")).strip()
                    msg_id = notif.get("message_id", 0)
-                   if chat_id and msg_id:
+                   msg_key = (chat_id, msg_id)
+                   if chat_id and msg_id and msg_key not in deleted_messages:
                        notifier.delete_message(chat_id, msg_id)
+                       deleted_messages.add(msg_key)
 
         if fkey in episode_summaries:
            summary = episode_summaries[fkey]
